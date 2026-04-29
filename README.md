@@ -6,8 +6,6 @@
 
 ## 仓库简介
 
-如果你想填写 GitHub 仓库简介，推荐直接用这一句：
-
 `A dorm electricity reminder tool for NWPU students, with Android/web session capture, low-balance alerts, and optional Qmsg push.`
 
 它能做的事很简单：
