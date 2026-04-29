@@ -1,5 +1,4 @@
 httpx
 pymsgbox
 pyinstaller
-websocket-client
 playwright

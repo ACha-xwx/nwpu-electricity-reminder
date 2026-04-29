@@ -6,7 +6,6 @@ from datetime import datetime
 import httpx
 import pymsgbox
 
-from android_session import query_electricity_via_android
 from browser_session import query_electricity_via_browser
 from nwpu_api import (
     create_async_client,
@@ -46,16 +45,7 @@ async def get_electric_left(auth, campus, building, room):
             )
         except Exception as browser_error:
             print(f"浏览器回放失败：{browser_error}")
-            print("继续尝试通过已连接的安卓手机页面查询。")
-            try:
-                return await asyncio.to_thread(
-                    query_electricity_via_android,
-                    campus,
-                    building,
-                    room,
-                )
-            except Exception as android_error:
-                raise RuntimeError(f"浏览器会话可能已失效，且安卓回退也失败：{android_error}") from browser_error
+            raise RuntimeError(f"浏览器会话可能已失效：{browser_error}") from browser_error
 
 
 async def wait_for_api(auth, timeout_seconds=120, retry_interval=5):
@@ -77,7 +67,7 @@ async def wait_for_api(auth, timeout_seconds=120, retry_interval=5):
             return True
         except Exception as error:
             if isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 412:
-                print("校园接口直连被 412 拦截，但仍可继续走浏览器或安卓页面回退。")
+                print("校园接口直连被 412 拦截，但仍可继续走浏览器会话回放。")
                 return True
 
             last_error = error
@@ -108,8 +98,8 @@ def build_auth_expired_message(room_info, current_time, error):
         "宿舍电量查询失败，登录状态可能已过期。\n"
         f"当前时间：{current_time}\n"
         f"宿舍信息：{room_info}\n"
-        "请重新打开校园 App 的“宿舍电费 / 用量查询”页面，"
-        "然后运行 capture_android_session.py 刷新登录状态。\n"
+        "请重新运行 capture_web_session.py 刷新登录状态。\n"
+        "浏览器路线还是不通的话，请提 issue 反馈。\n"
         f"可能原因：{summarize_auth_expired_error(error)}"
     )
 
@@ -173,7 +163,7 @@ def summarize_auth_expired_error(error):
         message = str(exc)
         lower_message = message.lower()
         if "浏览器会话可能已失效" in message:
-            return "浏览器登录状态已失效，而且当前没有可用的安卓页面回退。"
+            return "浏览器登录状态可能已失效。"
         if any(keyword in lower_message for keyword in ("cookie", "token", "login", "unauthorized", "forbidden", "cas", "sso")):
             return "当前保存的登录 Cookie / Token 可能已经失效。"
         if any(keyword in message for keyword in ("登录", "登录态", "会话", "统一身份认证")):
@@ -313,7 +303,7 @@ async def main():
             return
 
         if not file_path.exists():
-            message = "没有找到配置文件，请先运行 capture_android_session.py 或 bind_room.py。"
+            message = "没有找到配置文件，请先运行 capture_web_session.py。"
             print(message)
             pymsgbox.alert(message, "提示")
             return
@@ -351,8 +341,7 @@ async def main():
             message = build_auth_expired_message(room_info_hint, current_time, error)
             print(message)
             pymsgbox.alert(
-                "登录状态可能已过期，请重新打开校园 App 的宿舍电费页面，"
-                "然后运行 capture_android_session.py 刷新登录状态。",
+                "登录状态可能已过期，请重新运行 capture_web_session.py 刷新登录状态。",
                 "登录状态提醒",
             )
             send_notifications(message, config)

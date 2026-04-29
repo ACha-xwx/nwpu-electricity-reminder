@@ -18,16 +18,17 @@ if not defined PYTHON_CMD (
     exit /b 1
 )
 
-echo Starting electricity check...
+echo Starting browser session capture...
+echo A browser window should open next if everything is working.
 echo.
-%PYTHON_CMD% check_electricity.py
+%PYTHON_CMD% capture_web_session.py
 set "EXIT_CODE=%errorlevel%"
 
 echo.
 if not "%EXIT_CODE%"=="0" (
-    echo Electricity check failed.
+    echo Browser session capture failed.
 ) else (
-    echo Electricity check finished.
+    echo Browser session capture finished.
 )
 
 echo Press any key to close this window.

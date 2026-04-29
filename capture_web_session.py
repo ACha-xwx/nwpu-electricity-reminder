@@ -4,7 +4,6 @@ import tempfile
 import time
 
 from browser_session import _load_playwright, find_browser_executable
-from capture_android_session import update_config_with_state
 from nwpu_api import DEFAULT_REFERER, dump_config, get_config_path, load_config_or_empty
 
 YKT_HOME_URL = "https://yktapp.nwpu.edu.cn/plat/shouyeUser"
@@ -14,6 +13,48 @@ FALLBACK_MOBILE_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/125.0.0.0 "
     "Mobile Safari/537.36"
 )
+
+
+def update_config_with_state(
+    config,
+    scene,
+    user_agent,
+    referer,
+    cookies,
+    cookie_meta,
+    local_storage,
+    session_storage,
+):
+    scene_items = {}
+    for item in scene.get("data", []):
+        key = item.get("key")
+        if key:
+            scene_items[key] = item
+
+    if "campus" in scene_items:
+        config["campus"] = scene_items["campus"].get("id")
+    if "building" in scene_items:
+        config["building"] = scene_items["building"].get("id")
+    if "room" in scene_items:
+        config["room"] = scene_items["room"].get("id")
+
+    if "warning_electric" not in config:
+        config["warning_electric"] = 10
+
+    if scene.get("dataStr"):
+        config["room_display"] = scene["dataStr"]
+
+    config["auth"] = {
+        "user_agent": user_agent,
+        "referer": referer,
+        "origin": "https://yktapp.nwpu.edu.cn",
+        "cookies": cookies,
+        "cookie_meta": cookie_meta,
+        "local_storage": local_storage,
+        "session_storage": session_storage,
+        "page_url": referer,
+    }
+    return config
 
 
 def build_cookie_payload(cookies):
@@ -50,31 +91,6 @@ def read_sceneinfo(page):
         return None
 
 
-def read_body_text(page):
-    try:
-        return page.locator("body").inner_text(timeout=2000)
-    except Exception:
-        return ""
-
-
-def try_click_text(page, labels, timeout_ms=2500):
-    for label in labels:
-        for locator in (
-            page.get_by_text(label, exact=True).first,
-            page.get_by_text(label, exact=False).first,
-        ):
-            try:
-                locator.scroll_into_view_if_needed(timeout=timeout_ms)
-            except Exception:
-                pass
-            try:
-                locator.click(timeout=timeout_ms)
-                return label
-            except Exception:
-                continue
-    return None
-
-
 def wait_for_cas_login(context, timeout_seconds=300):
     print("正在等待统一身份认证登录完成。")
 
@@ -90,8 +106,8 @@ def wait_for_cas_login(context, timeout_seconds=300):
 
 
 def wait_for_ykt_page(page, timeout_seconds=300):
-    print("接下来脚本会打开电费页面。")
-    print("如果页面没有自动进入宿舍电费查询，请手动在浏览器里进入“宿舍电费 / 用量查询”页面。")
+    print("请在浏览器里手动进入“宿舍电费 / 用量查询”页面。")
+    print("只有页面里真的写出了会话信息，脚本才会继续抓取。")
 
     start_time = time.time()
     last_url = ""
@@ -109,7 +125,7 @@ def wait_for_ykt_page(page, timeout_seconds=300):
 
         time.sleep(1)
 
-    raise TimeoutError("等待电费页面超时。请确认你已经在浏览器里打开了宿舍电费页面。")
+    raise TimeoutError("等待电费页面超时。请重新运行脚本，并手动进入宿舍电费页面后再试。")
 
 
 def read_browser_state(context, page):
@@ -192,111 +208,15 @@ def get_launch_user_agent():
     return auth.get("user_agent") or FALLBACK_MOBILE_USER_AGENT
 
 
-def open_unified_auth_login(page, timeout_seconds=90):
-    print("正在自动打开统一身份认证登录入口。")
-    entry_labels = [
-        "请登录",
-        "登录",
-    ]
-    more_login_labels = [
-        "更多登录方式",
-    ]
-    unified_auth_labels = [
-        "统一身份认证",
-        "统一身份登录",
-    ]
-
-    start_time = time.time()
-    while time.time() - start_time < timeout_seconds:
-        current_url = page.url or ""
-        if "uis.nwpu.edu.cn/cas/login" in current_url:
-            print("已进入统一身份认证页面。")
-            return
-
-        clicked = try_click_text(page, unified_auth_labels)
-        if clicked:
-            print(f"已点击：{clicked}")
-            page.wait_for_timeout(4000)
-            continue
-
-        clicked = try_click_text(page, more_login_labels)
-        if clicked:
-            print(f"已点击：{clicked}")
-            page.wait_for_timeout(2000)
-            continue
-
-        clicked = try_click_text(page, entry_labels)
-        if clicked:
-            print(f"已点击：{clicked}")
-            page.wait_for_timeout(2000)
-            continue
-
-        time.sleep(1)
-
-    raise TimeoutError("自动打开统一身份认证入口超时。请确认页面已经正常加载。")
-
-
-def drive_to_electricity_page(page, timeout_seconds=120):
-    print("正在自动进入宿舍电费页面。")
-    login_labels = [
-        "统一身份登录",
-        "统一身份认证登录",
-        "统一身份认证",
-        "身份登录",
-    ]
-    electricity_labels = [
-        "学生电费",
-        "宿舍电费",
-        "宿舍电费/用量查询",
-        "宿舍电费 / 用量查询",
-        "用量查询",
-    ]
-    unauthorized_markers = [
-        "\"code\":401",
-        "请求未授权",
-        "未授权",
-    ]
-
-    start_time = time.time()
-    while time.time() - start_time < timeout_seconds:
-        if read_sceneinfo(page):
-            print("电费页面会话已经就绪。")
-            return
-
-        current_url = page.url or ""
-        body_text = read_body_text(page)
-
-        clicked = try_click_text(page, login_labels)
-        if clicked:
-            print(f"已点击：{clicked}")
-            page.wait_for_timeout(5000)
-            continue
-
-        clicked = try_click_text(page, electricity_labels)
-        if clicked:
-            print(f"已点击：{clicked}")
-            page.wait_for_timeout(5000)
-            continue
-
-        if any(marker in body_text for marker in unauthorized_markers):
-            print("页面仍然未授权，正在重新打开移动服务平台首页。")
-            page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000)
-            continue
-
-        if "berserker-auth/cas/login" in current_url:
-            print("当前还停在认证跳转页，正在重新打开移动服务平台首页。")
-            page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000)
-            continue
-
-        if current_url.startswith("https://yktapp.nwpu.edu.cn/jfdt") and not body_text.strip():
-            print("电费页面暂时是空白页，正在回到移动服务平台首页重试。")
-            page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000)
-            continue
-
-        time.sleep(1)
+def print_manual_login_steps():
+    print("浏览器已经打开，请按下面的顺序手动操作：")
+    print("1. 点击页面上方的“请登录”按钮。")
+    print("2. 在新页面底部点击“更多登录方式”。")
+    print("3. 选择“统一身份认证”入口。")
+    print("4. 登录你的西北工业大学账号。")
+    print("5. 登录成功后，回到移动服务平台页面。")
+    print("6. 点击“学生电费”或“宿舍电费 / 用量查询”。")
+    print("7. 进入电费页面后，先不要关浏览器，等脚本继续抓取。")
 
 
 def main():
@@ -324,12 +244,8 @@ def main():
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(5000)
-            open_unified_auth_login(page)
+            print_manual_login_steps()
             wait_for_cas_login(context)
-
-            page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000)
-            drive_to_electricity_page(page)
             current_url, scene = wait_for_ykt_page(page)
 
             browser_state = read_browser_state(context, page)
