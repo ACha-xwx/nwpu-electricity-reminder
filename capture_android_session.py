@@ -72,7 +72,7 @@ def main():
     if config.get("room_display"):
         print(f"识别到的宿舍：{config['room_display']}")
     print(f"登录信息已更新，这次一共保存了 {len(android_state['cookies'])} 个 Cookie。")
-    print("现在可以直接运行 check_electricit_linux.py 或 check_electricity.py。")
+    print("现在可以直接运行 check_electricity_linux.py 或 check_electricity.py。")
 
 
 if __name__ == "__main__":

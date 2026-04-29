@@ -22,7 +22,7 @@
 
 1. 用安卓手机打开校园 App 的“宿舍电费 / 用量查询”页面
 2. 电脑运行 `capture_android_session.py` 抓一次登录状态
-3. 再运行 `check_electricity.py` 或 `check_electricit_linux.py`
+3. 再运行 `check_electricity.py` 或 `check_electricity_linux.py`
 4. 想收私聊提醒的话，接官方 `Qmsg` 就够了，不一定要自己搭 QQ 机器人
 
 也就是说：
@@ -71,7 +71,7 @@
 
 也可以。
 
-- 有服务器：用 `check_electricit_linux.py` + `cron`
+- 有服务器：用 `check_electricity_linux.py` + `cron`
 - 没服务器：用自己电脑的计划任务
 
 如果你想“每次检查都发一条当前电量”，把配置里的 `report_every_check` 改成 `true`。
@@ -291,7 +291,7 @@ python check_electricity.py
 如果你是在服务器上，或者只是想看命令行输出：
 
 ```bash
-python check_electricit_linux.py
+python check_electricity_linux.py
 ```
 
 这一步建议你先别急着配定时任务，先手动跑通一次。
@@ -336,7 +336,7 @@ python check_electricit_linux.py
 无论你运行的是：
 
 - `check_electricity.py`
-- `check_electricit_linux.py`
+- `check_electricity_linux.py`
 
 只要配置里有 `push`，它们现在都会按配置发消息。
 
@@ -423,7 +423,7 @@ python capture_android_session.py
 现在两个查询脚本都会尽量帮你兜一下：
 
 - `check_electricity.py`
-- `check_electricit_linux.py`
+- `check_electricity_linux.py`
 
 如果它们判断这次失败很像“登录状态过期”，并且你已经配好了 `push`，就会主动发一条提醒你刷新登录状态。
 
@@ -494,7 +494,7 @@ shell:startup
 服务器上推荐用：
 
 ```bash
-python check_electricit_linux.py
+python check_electricity_linux.py
 ```
 
 然后配 `cron`。
@@ -503,7 +503,7 @@ python check_electricit_linux.py
 
 ```cron
 CRON_TZ=Asia/Shanghai
-0 8,20 * * * cd /path/to/npu_check_electricity && /usr/bin/python3 check_electricit_linux.py >> cron.log 2>&1
+0 8,20 * * * cd /path/to/npu_check_electricity && /usr/bin/python3 check_electricity_linux.py >> cron.log 2>&1
 ```
 
 如果你想“固定时间播报当前电量”，记得把：
@@ -526,7 +526,7 @@ CRON_TZ=Asia/Shanghai
 4. 是否已经运行过 `capture_android_session.py`
 5. 项目目录里是否已经生成了 `check_electricity.json`
 6. 如果要私聊提醒，是否已经在 Qmsg 管理台添加接收 QQ 并加了机器人好友
-7. 是否已经手动跑通过一次 `check_electricity.py` 或 `check_electricit_linux.py`
+7. 是否已经手动跑通过一次 `check_electricity.py` 或 `check_electricity_linux.py`
 
 ## 常见问题
 
@@ -633,7 +633,8 @@ python capture_android_session.py
 - `capture_android_session.py`：抓安卓校园 App 的登录状态
 - `bind_room.py`：手动重新选宿舍
 - `check_electricity.py`：Windows 弹窗提醒版，也支持按配置推送消息
-- `check_electricit_linux.py`：服务器 / 命令行版
+- `check_electricity_linux.py`：服务器 / 命令行版
+- `check_electricit_linux.py`：旧文件名兼容入口，已有计划任务暂时不用急着改
 - `run_check_windows.bat`：Windows 双击运行版
 - `run_check_windows_silent.vbs`：Windows 静默运行版
 - `check_electricity.example.json`：示例配置
