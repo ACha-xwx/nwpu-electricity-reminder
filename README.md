@@ -1,14 +1,14 @@
 # nwpu-electricity-reminder
 
-> A dorm electricity reminder tool for NWPU students, with Android session capture, low-balance alerts, and optional Qmsg push.
+> A dorm electricity reminder tool for NWPU students, with Android/web session capture, low-balance alerts, and optional Qmsg push.
 
-给西工大学生用的宿舍电量提醒小工具，支持安卓校园 App 登录状态抓取、低电量提醒，以及可选的 `Qmsg` 推送。
+给西工大学生用的宿舍电量提醒小工具，支持安卓校园 App / 浏览器会话抓取、低电量提醒，以及可选的 `Qmsg` 推送。
 
 ## 仓库简介
 
 如果你想填写 GitHub 仓库简介，推荐直接用这一句：
 
-`A dorm electricity reminder tool for NWPU students, with Android session capture, low-balance alerts, and optional Qmsg push.`
+`A dorm electricity reminder tool for NWPU students, with Android/web session capture, low-balance alerts, and optional Qmsg push.`
 
 它能做的事很简单：
 
@@ -18,20 +18,28 @@
 
 ## 先看结论
 
-如果你只是想自己用，最推荐这条路：
+如果你只是想给自己做一个电量提醒，最省心的用法是：
 
 1. 用安卓手机打开校园 App 的“宿舍电费 / 用量查询”页面
 2. 电脑运行 `capture_android_session.py` 抓一次登录状态
 3. 再运行 `check_electricity.py` 或 `check_electricity_linux.py`
 4. 想收私聊提醒的话，接官方 `Qmsg` 就够了，不一定要自己搭 QQ 机器人
 
-也就是说：
+如果你手边没有数据线，或者懒得开 USB 调试，也可以直接走浏览器路线：
+
+1. 电脑运行 `capture_web_session.py`
+2. 脚本会自动打开移动服务平台，并尝试点到“统一身份认证”入口
+3. 你只需要在统一身份认证页面完成登录
+4. 脚本会继续抓取最终电费页面的 Web 会话
+5. 再运行查询脚本
+
+换句话说：
 
 - **没有服务器，也能用**
 - **不会写代码，也能照着做**
 - **大多数同学不需要群推送**
 
-## 这个项目现在为什么要先连一下安卓手机
+## 为什么现在还保留安卓方案
 
 因为学校接口现在经常会拦脚本直连，常见现象就是返回 `HTTP 412`。
 
@@ -39,6 +47,7 @@
 
 - 直接拿最原始的 Python 请求去查，容易被拦
 - 先从安卓校园 App 抓一次当前登录状态，会稳很多
+- 如果不方便连手机，也可以抓浏览器里的最终会话，但稳定性通常还是安卓方案更高
 - 抓完以后，电脑或服务器通常可以直接查
 - 等登录状态过期了，再重新抓一次就行
 
@@ -48,9 +57,9 @@
 
 ## 适合哪几种同学
 
-### 1. 只想低电量时提醒一下自己
+### 1. 只想在电量低的时候提醒一下自己
 
-最省心。
+这是最省心的用法。
 
 - 不需要服务器
 - 不需要群推送
@@ -59,6 +68,7 @@
 直接用：
 
 - `capture_android_session.py`
+- 或 `capture_web_session.py`
 - `check_electricity.py`
 - 官方 `Qmsg` 私聊推送
 
@@ -69,7 +79,7 @@
 
 ### 2. 想每天固定播报一次或两次
 
-也可以。
+这也完全可以。
 
 - 有服务器：用 `check_electricity_linux.py` + `cron`
 - 没服务器：用自己电脑的计划任务
@@ -87,16 +97,16 @@
 
 如果你只是自己收消息，真的没必要先折腾群推送。
 
-补一句现在的实际情况：
+实际情况是：
 
 - 官方公共版更适合私聊提醒
 - 如果你想发群，一般要自己搭捐赠版或私有云
 
 ## 最快上手
 
-这一节最适合第一次用的人。
+这一节就是给第一次接触这个项目的人准备的。
 
-如果你不想看太多原理，直接按下面做就行。
+如果你不想先研究原理，直接照着下面做就行。
 
 ### 第 0 步：先把项目放到一个固定目录
 
@@ -252,6 +262,51 @@ py -3 capture_android_session.py
 2. USB 调试有没有授权成功
 3. `adb devices` 能不能看到手机
 
+### 第 3B 步：如果你不想连安卓手机，可以改用浏览器抓取
+
+这一条路线适合：
+
+- 手边没有数据线
+- 不方便开 USB 调试
+- 想直接在电脑浏览器里完成统一认证登录
+
+执行：
+
+```bash
+python capture_web_session.py
+```
+
+这个脚本会：
+
+1. 打开一个可见的 Chrome / Edge 窗口
+2. 直接进入移动服务平台首页 `https://yktapp.nwpu.edu.cn/plat/shouyeUser`
+3. 自动尝试点击 `请登录` -> `更多登录方式` -> `统一身份认证`
+4. 登录成功后自动回到首页，并继续尝试点击 `学生电费`
+5. 抓取最终页面里的 Cookie、User-Agent、localStorage、sessionStorage
+6. 写入 `check_electricity.json`
+
+这条路线里，你通常只需要自己做这一件事：
+
+1. 在统一身份认证页面输入账号密码并登录
+
+如果脚本登录完成后没有自动进入宿舍电费页，再手动点进“宿舍电费 / 用量查询”就行。
+
+正常情况下，你会看到类似提示：
+
+- “检测到统一认证登录成功”
+- “检测到电费页面会话信息”
+- “配置文件已写入”
+
+如果这条路线成功了，后面一样可以继续运行：
+
+- `check_electricity.py`
+- `check_electricity_linux.py`
+
+实际体验上：
+
+- 浏览器抓取比“只拿统一认证请求头”更完整
+- 但稳定性通常还是不如安卓校园 App 那条路线
+
 ### 第 3.5 步：如果你想先看看配置文件长什么样
 
 可以参考：
@@ -294,7 +349,7 @@ python check_electricity.py
 python check_electricity_linux.py
 ```
 
-这一步建议你先别急着配定时任务，先手动跑通一次。
+这一步建议先别急着配定时任务，先手动跑通一次。
 
 跑通之后你通常会看到：
 
@@ -306,7 +361,7 @@ python check_electricity_linux.py
 
 - “推送成功，第 1 个渠道（qmsg）”
 
-如果这里就失败，优先不要先折腾定时任务，先把这一步跑通。
+如果这里就失败，先别急着折腾定时任务，先把这一步跑通。
 
 ### 第 5 步：需要时再加推送
 
@@ -407,7 +462,7 @@ Qmsg 的接口格式和参数说明可以看官方文档：
 
 ### `auth`
 
-这里保存的是从安卓校园 App 抓到的登录状态。
+这里保存的是从安卓校园 App 或浏览器最终页面抓到的登录状态。
 
 一般不需要手改。
 
@@ -576,7 +631,7 @@ python capture_android_session.py
 
 ### 4. 我能不能把这套东西借给同学一起用
 
-理论上可以，但分两种情况。
+理论上可以，不过要分两种情况看。
 
 #### 借“推送通道”
 
@@ -603,7 +658,7 @@ python capture_android_session.py
 
 ## 推荐的实际使用方式
 
-如果你问我最推荐哪一种，我会这样排：
+如果你想让我给个直接点的建议，我会这样排：
 
 ### 最推荐：自己电脑 + 官方 Qmsg 私聊
 
@@ -631,10 +686,10 @@ python capture_android_session.py
 仓库里最常用的几个文件：
 
 - `capture_android_session.py`：抓安卓校园 App 的登录状态
+- `capture_web_session.py`：抓浏览器里的统一认证 / 电费页面会话
 - `bind_room.py`：手动重新选宿舍
 - `check_electricity.py`：Windows 弹窗提醒版，也支持按配置推送消息
 - `check_electricity_linux.py`：服务器 / 命令行版
-- `check_electricit_linux.py`：旧文件名兼容入口，已有计划任务暂时不用急着改
 - `run_check_windows.bat`：Windows 双击运行版
 - `run_check_windows_silent.vbs`：Windows 静默运行版
 - `check_electricity.example.json`：示例配置
