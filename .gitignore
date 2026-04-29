@@ -1,0 +1,10 @@
+check_electricity.json
+.venv
+build
+dist
+__pycache__
+*.spec
+*.log
+task_plan.md
+progress.md
+findings.md

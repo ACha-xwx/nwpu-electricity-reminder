@@ -1,0 +1,27 @@
+{
+    "campus": "你的校区代码",
+    "building": "你的楼栋代码",
+    "room": "你的房间代码",
+    "warning_electric": 10,
+    "report_every_check": false,
+    "room_display": "长安校区 某楼 123",
+    "auth": {
+        "user_agent": "安卓校园 App 当前页面里的 User-Agent",
+        "referer": "https://yktapp.nwpu.edu.cn/jfdt/#/pays?id=182",
+        "origin": "https://yktapp.nwpu.edu.cn",
+        "page_url": "https://yktapp.nwpu.edu.cn/jfdt/#/pays?id=182",
+        "cookies": {
+            "TGC": "从安卓 App 抓到的 Cookie",
+            "X-Id-Token": "从安卓 App 抓到的 Cookie"
+        },
+        "cookie_meta": [],
+        "local_storage": {},
+        "session_storage": {}
+    },
+    "push": {
+        "provider": "qmsg",
+        "key": "你的QmsgKey",
+        "mode": "private",
+        "qq": "接收消息的QQ号"
+    }
+}
