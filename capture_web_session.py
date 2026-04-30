@@ -22,9 +22,10 @@ MOBILE_USER_AGENT = (
 # A taller mobile viewport keeps the "统一身份认证" option visible
 # on the login sheet without asking users to resize the window manually.
 MOBILE_VIEWPORT = {"width": 430, "height": 1180, "device_scale_factor": 2}
-OUTER_WINDOW_WIDTH = 560
+OUTER_WINDOW_WIDTH = 470
 OUTER_WINDOW_HEIGHT = 1480
 PROFILE_DIR_NAME = ".browser_profile"
+LOGIN_PAGE_SCALE = 0.9
 
 
 def update_config_with_state(
@@ -193,6 +194,76 @@ def emulate_mobile_browser(context, page):
             "enabled": True,
             "maxTouchPoints": 5,
         },
+    )
+
+
+def install_login_page_scale(page):
+    page.add_init_script(
+        script=f"""
+        (() => {{
+          const scale = {LOGIN_PAGE_SCALE};
+          const defaultViewport = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=yes, viewport-fit=cover';
+
+          const ensureViewport = () =>
+            document.querySelector('meta[name="viewport"]') ||
+            (() => {{
+              const tag = document.createElement('meta');
+              tag.name = 'viewport';
+              document.head.appendChild(tag);
+              return tag;
+            }})();
+
+          const setNormalScale = () => {{
+            const viewport = ensureViewport();
+            viewport.setAttribute('content', defaultViewport);
+            document.documentElement.style.zoom = '1';
+            if (document.body) {{
+              document.body.style.zoom = '1';
+            }}
+          }};
+
+          const setCompactScale = () => {{
+            const viewport = ensureViewport();
+            viewport.setAttribute(
+              'content',
+              `width=device-width, initial-scale=${{scale}}, maximum-scale=${{scale}}, user-scalable=yes, viewport-fit=cover`
+            );
+            document.documentElement.style.zoom = String(scale);
+            if (document.body) {{
+              document.body.style.zoom = String(scale);
+            }}
+          }};
+
+          const hasLoginSheet = () => {{
+            const text = document.body ? document.body.innerText : '';
+            return text.includes('学号登录') && text.includes('统一身份认证');
+          }};
+
+          const refreshScale = () => {{
+            if (hasLoginSheet()) {{
+              setCompactScale();
+            }} else {{
+              setNormalScale();
+            }}
+          }};
+
+          const observer = new MutationObserver(() => {{
+            window.setTimeout(refreshScale, 30);
+          }});
+
+          document.addEventListener('DOMContentLoaded', () => {{
+            refreshScale();
+            observer.observe(document.documentElement, {{
+              childList: true,
+              subtree: true,
+              characterData: true,
+            }});
+          }});
+
+          window.addEventListener('load', refreshScale);
+          window.setInterval(refreshScale, 800);
+        }})();
+        """,
     )
 
 
@@ -374,6 +445,7 @@ def main():
             page = get_or_create_page(context)
             resize_outer_window(page)
             emulate_mobile_browser(context, page)
+            install_login_page_scale(page)
             page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
             print_manual_login_steps()
             wait_for_cas_login(context)

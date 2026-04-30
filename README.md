@@ -8,25 +8,21 @@
 
 - 查询宿舍当前剩余电量
 - 电量低于阈值时提醒
-- 按需推送到 `Qmsg` 这个QQ机器人服务（如果你想尝试其他的机器人，欢迎跟我说！我会把它们的调用方式做到脚本里面！）
+- 按需推送到 `Qmsg`
 
-## 先看看结论吧！
+## 先看结论
 
-操作顺序很简单：
+顺序很简单：
 
 1. 先运行 `capture_web_session.py` 抓一次登录状态
 2. 再运行 `check_electricity.py` 或 `check_electricity_linux.py` 查询余额
 3. 跑通后再去配 `Qmsg` 和定时任务
 
-浏览器路线一直不通的话，直接在 GitHub 上提 issue 就行，我来处理。
+浏览器路线一直不通的话，直接在 GitHub 上提 issue 就行。
 
-## 快速使用
+## 最短上手
 
 ### 1. 安装依赖
-
-不想自己敲命令的话，Windows 可以直接双击仓库里的 `install_requirements.bat` 文件。
-
-如果你想敲的话……
 
 ```bash
 pip install -r requirements.txt
@@ -43,17 +39,19 @@ README 里像 `python xxx.py`、`py -3 ...` 这样的命令，都是在电脑上
 - Windows：`PowerShell`、`Windows Terminal` 或 `命令提示符`
 - macOS / Linux：系统自带的 `Terminal`
 
+不想自己敲命令的话，Windows 可以直接双击仓库里的 `.bat` 文件。
+
 ### 2. 先抓登录状态
 
-在 Windows 上直接双击运行：
-
-- `capture_web_session_windows.bat`
-
-或者执行：
+执行：
 
 ```bash
 python capture_web_session.py
 ```
+
+或者在 Windows 上直接双击：
+
+- `capture_web_session_windows.bat`
 
 正常情况下会先弹出一个黑色命令行窗口，然后自动打开浏览器。
 
@@ -63,17 +61,17 @@ python capture_web_session.py
 2. 进入移动服务平台首页
 3. 等你手动完成登录和进入电费页面
 4. 在页面会话信息出现后生成 `check_electricity.json`
-5. 顺便刷新一份本地浏览器会话缓存，供后续查询使用
+5. 顺手刷新一份本地浏览器会话缓存，给后续查询兜底
 
-这份浏览器会话缓存不会放在仓库目录里。Windows 下默认保存在这个位置：
+这份浏览器会话缓存不会放在仓库目录里。Windows 下默认保存在：
 
 `C:\Users\你的用户名\AppData\Local\nwpu-electricity-reminder`
 
-**当出现浏览器页面后**，请按这个顺序操作：
+请按这个顺序手动操作：
 
 1. 点击页面上方的“请登录”按钮
 2. 在新页面底部点击“更多登录方式”
-3. 选择“统一身份认证”入口（如果没看到这个入口的话就把浏览器窗口最大化或者把窗口下边界往下拉一点）
+3. 选择“统一身份认证”入口
 4. 登录你的西北工业大学账号
 5. 登录成功后，回到移动服务平台页面
 6. 点击“学生电费”或“宿舍电费 / 用量查询”
@@ -92,15 +90,13 @@ python capture_web_session.py
 
 Windows：
 
-直接双击：
-
-- `run_check_windows.bat`
-
-或者在终端输入：
-
 ```bash
 python check_electricity.py
 ```
+
+或者直接双击：
+
+- `run_check_windows.bat`
 
 Linux / 服务器：
 
@@ -114,9 +110,9 @@ python check_electricity_linux.py
 - 当前剩余电量
 - 宿舍信息
 
-## Qmsg 的使用方法
+## Qmsg 怎么配
 
-大多数同学只需要官方的`Qmsg` 机器人私聊就够了。
+大多数同学只需要官方 `Qmsg` 私聊就够了。
 
 Qmsg 网页端的大致步骤：
 
@@ -124,7 +120,7 @@ Qmsg 网页端的大致步骤：
 2. 选一个机器人
 3. 在管理台添加接收消息的 QQ
 4. 用你的 QQ 把机器人加为好友
-5. 复制你的 `Key`（请注意这个 `Key` 不要随便分享给他人！）
+5. 复制 `Key`
 6. 把 `Key` 和 QQ 号填回 `check_electricity.json`
 
 在 `check_electricity.json` 里加上：
