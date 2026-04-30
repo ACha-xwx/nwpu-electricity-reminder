@@ -279,7 +279,6 @@ def send_qqbot_http(message, push_config):
 def send_notifications(message, config):
     push_targets = build_push_targets(config)
     if not push_targets:
-        print("没有配置推送渠道，这次只查询，不发送消息。")
         return
 
     for index, push_config in enumerate(push_targets, start=1):
@@ -333,7 +332,7 @@ async def main():
             print("电量充足，发送常规播报。")
             send_notifications(build_status_message(electric_left, room_info, current_time), config)
         else:
-            print("电量充足，这次不发送消息。")
+            print("电量充足。")
     except Exception as error:
         if is_probable_auth_expired(error):
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

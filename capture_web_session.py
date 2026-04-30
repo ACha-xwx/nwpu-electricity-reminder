@@ -1,18 +1,30 @@
 import json
+import os
+import socket
+import subprocess
 import shutil
 import tempfile
 import time
+from contextlib import closing
+from pathlib import Path
 
+import httpx
 from browser_session import _load_playwright, find_browser_executable
 from nwpu_api import DEFAULT_REFERER, dump_config, get_config_path, load_config_or_empty
 
 YKT_HOME_URL = "https://yktapp.nwpu.edu.cn/plat/shouyeUser"
 YKT_API_URL = "https://yktapp.nwpu.edu.cn/jfdt/charge/feeitem/getThirdData"
-FALLBACK_MOBILE_USER_AGENT = (
-    "Mozilla/5.0 (Linux; Android 14; Pixel 7 Build/UQ1A.240205.002; wv) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/125.0.0.0 "
-    "Mobile Safari/537.36"
+MOBILE_USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Mobile Safari/537.36"
 )
+# A taller mobile viewport keeps the "统一身份认证" option visible
+# on the login sheet without asking users to resize the window manually.
+MOBILE_VIEWPORT = {"width": 430, "height": 1180, "device_scale_factor": 2}
+OUTER_WINDOW_WIDTH = 560
+OUTER_WINDOW_HEIGHT = 1480
+PROFILE_DIR_NAME = ".browser_profile"
 
 
 def update_config_with_state(
@@ -89,6 +101,122 @@ def read_sceneinfo(page):
         return page.evaluate("() => sessionStorage.getItem('sceneinfo')")
     except Exception:
         return None
+
+
+def get_saved_profile_dir(config_path=None):
+    if os.name == "nt":
+        base_dir = Path(os.getenv("LOCALAPPDATA", Path.home()))
+    else:
+        base_dir = Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return base_dir / "nwpu-electricity-reminder" / PROFILE_DIR_NAME
+
+
+def get_free_port():
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def wait_for_debug_endpoint(port, timeout_seconds=20):
+    start_time = time.time()
+    endpoint = f"http://127.0.0.1:{port}/json/version"
+
+    while time.time() - start_time < timeout_seconds:
+        try:
+            response = httpx.get(endpoint, timeout=2.0)
+            if response.status_code == 200:
+                return
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    raise TimeoutError("等待浏览器调试端口超时。请确认 Chrome 或 Edge 已经成功启动。")
+
+
+def launch_debug_browser(browser_path, user_data_dir):
+    port = get_free_port()
+    command = [
+        browser_path,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={user_data_dir}",
+        "--new-window",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-session-crashed-bubble",
+        "--window-position=0,0",
+        f"--window-size={OUTER_WINDOW_WIDTH},{OUTER_WINDOW_HEIGHT}",
+        "about:blank",
+    ]
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    wait_for_debug_endpoint(port)
+    return process, port
+
+
+def close_browser_process(process):
+    if process is None or process.poll() is not None:
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def emulate_mobile_browser(context, page):
+    cdp_session = context.new_cdp_session(page)
+    cdp_session.send(
+        "Emulation.setDeviceMetricsOverride",
+        {
+            "width": MOBILE_VIEWPORT["width"],
+            "height": MOBILE_VIEWPORT["height"],
+            "deviceScaleFactor": MOBILE_VIEWPORT["device_scale_factor"],
+            "mobile": True,
+            "screenOrientation": {"type": "portraitPrimary", "angle": 0},
+        },
+    )
+    cdp_session.send(
+        "Emulation.setUserAgentOverride",
+        {
+            "userAgent": MOBILE_USER_AGENT,
+            "platform": "Android",
+        },
+    )
+    cdp_session.send(
+        "Emulation.setTouchEmulationEnabled",
+        {
+            "enabled": True,
+            "maxTouchPoints": 5,
+        },
+    )
+
+
+def resize_outer_window(page):
+    cdp_session = page.context.new_cdp_session(page)
+    try:
+        window_info = cdp_session.send("Browser.getWindowForTarget")
+        window_id = window_info.get("windowId")
+        if window_id:
+            cdp_session.send(
+                "Browser.setWindowBounds",
+                {
+                    "windowId": window_id,
+                    "bounds": {
+                        "left": 0,
+                        "top": 0,
+                        "width": OUTER_WINDOW_WIDTH,
+                        "height": OUTER_WINDOW_HEIGHT,
+                        "windowState": "normal",
+                    },
+                },
+            )
+    except Exception:
+        pass
 
 
 def wait_for_cas_login(context, timeout_seconds=300):
@@ -202,14 +330,9 @@ def query_current_room_from_page(page, scene):
     return params, result
 
 
-def get_launch_user_agent():
-    config = load_config_or_empty(get_config_path())
-    auth = config.get("auth", {})
-    return auth.get("user_agent") or FALLBACK_MOBILE_USER_AGENT
-
-
 def print_manual_login_steps():
-    print("浏览器已经打开，请按下面的顺序手动操作：")
+    print("浏览器已经打开，当前窗口会尽量模拟成手机浏览器。")
+    print("请按下面的顺序手动操作：")
     print("1. 点击页面上方的“请登录”按钮。")
     print("2. 在新页面底部点击“更多登录方式”。")
     print("3. 选择“统一身份认证”入口。")
@@ -219,31 +342,39 @@ def print_manual_login_steps():
     print("7. 进入电费页面后，先不要关浏览器，等脚本继续抓取。")
 
 
+def get_or_create_page(context):
+    for page in context.pages:
+        url = page.url or ""
+        if "yktapp.nwpu.edu.cn" in url:
+            return page
+
+    if context.pages:
+        return context.pages[0]
+    return context.new_page()
+
+
 def main():
     sync_playwright = _load_playwright()
     browser_path = find_browser_executable()
     if not browser_path:
         raise RuntimeError("没有找到 Chrome 或 Edge。请先安装浏览器，或设置 PLAYWRIGHT_BROWSER_PATH。")
 
-    temp_profile_dir = tempfile.mkdtemp(prefix="nwpu_web_capture_")
-    launch_user_agent = get_launch_user_agent()
-
     with sync_playwright() as playwright:
-        context = playwright.chromium.launch_persistent_context(
-            user_data_dir=temp_profile_dir,
-            executable_path=browser_path,
-            headless=False,
-            user_agent=launch_user_agent,
-            locale="zh-CN",
-            viewport={"width": 430, "height": 932},
-            is_mobile=True,
-            has_touch=True,
-            device_scale_factor=2,
-        )
+        temp_profile_dir = tempfile.mkdtemp(prefix="nwpu_web_capture_")
+        context = None
+        browser = None
+        browser_process = None
+        save_profile = False
+        saved_profile_dir = get_saved_profile_dir()
         try:
-            page = context.pages[0] if context.pages else context.new_page()
+            print("正在启动一个手机样式的 Chrome / Edge 窗口。")
+            browser_process, port = launch_debug_browser(browser_path, temp_profile_dir)
+            browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+            context = browser.contexts[0] if browser.contexts else browser.new_context()
+            page = get_or_create_page(context)
+            resize_outer_window(page)
+            emulate_mobile_browser(context, page)
             page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000)
             print_manual_login_steps()
             wait_for_cas_login(context)
             current_url, scene = wait_for_ykt_page(page)
@@ -291,12 +422,20 @@ def main():
                     f"{room_data.get('campus', '')} {room_data.get('building', '')} {room_data.get('room', '')}，"
                     f"当前剩余电量 {remaining}"
                 )
+                save_profile = True
             else:
                 print("已经抓到浏览器会话，但页面内测试查询没有返回 200。")
                 print(result["text"][:300])
                 print("你仍然可以继续运行 check_electricity.py 或 check_electricity_linux.py 再试。")
         finally:
-            context.close()
+            if browser is not None:
+                browser.close()
+            close_browser_process(browser_process)
+            if save_profile:
+                saved_profile_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.rmtree(saved_profile_dir, ignore_errors=True)
+                shutil.copytree(temp_profile_dir, saved_profile_dir)
+                print(f"浏览器会话目录已更新：{saved_profile_dir}")
             shutil.rmtree(temp_profile_dir, ignore_errors=True)
 
 

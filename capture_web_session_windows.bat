@@ -3,17 +3,22 @@ setlocal
 cd /d "%~dp0"
 
 set "PYTHON_CMD="
-where py >nul 2>nul
-if %errorlevel%==0 set "PYTHON_CMD=py -3"
+py -3 -c "import sys" >nul 2>nul
+if not errorlevel 1 set "PYTHON_CMD=py -3"
 
 if not defined PYTHON_CMD (
-    where python >nul 2>nul
+    python -c "import sys" >nul 2>nul
     if not errorlevel 1 set "PYTHON_CMD=python"
 )
 
 if not defined PYTHON_CMD (
-    echo Python 3 was not found.
-    echo Please install Python 3 and try again.
+    echo A working Python 3 interpreter was not found.
+    echo.
+    echo If you see an error like:
+    echo Unable to create process using 'C:\Python314\python.exe'
+    echo it usually means the py launcher points to an old Python path.
+    echo.
+    echo Please reinstall Python 3 and make sure python.exe works in PowerShell.
     pause
     exit /b 1
 )

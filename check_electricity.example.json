@@ -6,13 +6,13 @@
     "report_every_check": false,
     "room_display": "长安校区 某楼 123",
     "auth": {
-        "user_agent": "安卓校园 App 当前页面里的 User-Agent",
-        "referer": "https://yktapp.nwpu.edu.cn/jfdt/#/pays?id=182",
+        "user_agent": "浏览器抓取到的 User-Agent",
+        "referer": "https://yktapp.nwpu.edu.cn/plat/shouyeUser",
         "origin": "https://yktapp.nwpu.edu.cn",
-        "page_url": "https://yktapp.nwpu.edu.cn/jfdt/#/pays?id=182",
+        "page_url": "https://yktapp.nwpu.edu.cn/plat/shouyeUser",
         "cookies": {
-            "TGC": "从安卓 App 抓到的 Cookie",
-            "X-Id-Token": "从安卓 App 抓到的 Cookie"
+            "TGC": "抓取到的 Cookie",
+            "SESSION": "抓取到的 Cookie"
         },
         "cookie_meta": [],
         "local_storage": {},
