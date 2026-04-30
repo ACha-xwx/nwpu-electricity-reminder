@@ -206,6 +206,10 @@ def install_login_page_scale(page):
           const loginPageMinScale = {LOGIN_PAGE_MIN_SCALE};
           const loginSheetMinScale = {LOGIN_SHEET_MIN_SCALE};
           const viewportMargin = {LOGIN_VIEWPORT_MARGIN};
+          const loginPageTitle = '\\u6b22\\u8fce\\u767b\\u5f55\\u79fb\\u52a8\\u670d\\u52a1\\u5e73\\u53f0';
+          const studentLoginText = '\\u5b66\\u53f7\\u767b\\u5f55';
+          const unifiedLoginText = '\\u7edf\\u4e00\\u8eab\\u4efd\\u8ba4\\u8bc1';
+          const moreLoginMethodsText = '\\u66f4\\u591a\\u767b\\u5f55\\u65b9\\u5f0f';
           const defaultViewport = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=yes, viewport-fit=cover';
 
           const ensureViewport = () =>
@@ -236,6 +240,9 @@ def install_login_page_scale(page):
 
           const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
+          const textOf = node =>
+            (node?.innerText || node?.textContent || '').replace(/\\s+/g, ' ').trim();
+
           const getViewportHeight = () => {{
             const candidates = [
               window.visualViewport ? window.visualViewport.height : 0,
@@ -248,37 +255,66 @@ def install_login_page_scale(page):
 
           const findElementByTexts = texts => {{
             const candidates = Array.from(
-              document.querySelectorAll('button, a, div, span, p, li')
+              document.querySelectorAll('button, a, div, span, p, li, label')
             );
             return candidates.find(node => {{
-              const text = (node.innerText || node.textContent || '').trim();
+              const text = textOf(node);
               return texts.every(part => text.includes(part));
             }});
           }};
 
           const hasLoginSheet = () => {{
-            const text = document.body ? document.body.innerText : '';
-            return text.includes('学号登录') && text.includes('统一身份认证');
+            const text = textOf(document.body || document.documentElement);
+            return text.includes(studentLoginText) && text.includes(unifiedLoginText);
           }};
 
           const hasLoginPage = () => {{
-            const text = document.body ? document.body.innerText : '';
-            return text.includes('欢迎登录移动服务平台') && text.includes('请输入学号');
+            const text = textOf(document.body || document.documentElement);
+            return text.includes(loginPageTitle) && text.includes(studentLoginText);
           }};
 
-          const revealElement = texts => {{
-            const target = findElementByTexts(texts);
-            if (target && typeof target.scrollIntoView === 'function') {{
+          const scrollIntoViewRobust = target => {{
+            if (!target) {{
+              return;
+            }}
+
+            if (typeof target.scrollIntoView === 'function') {{
               target.scrollIntoView({{ block: 'center', inline: 'nearest', behavior: 'auto' }});
             }}
-            return target;
+
+            let parent = target.parentElement;
+            while (parent) {{
+              const style = window.getComputedStyle(parent);
+              const scrollable =
+                parent.scrollHeight > parent.clientHeight + 12 &&
+                /(auto|scroll)/.test(style.overflowY);
+
+              if (scrollable) {{
+                const targetTop =
+                  target.getBoundingClientRect().top -
+                  parent.getBoundingClientRect().top +
+                  parent.scrollTop;
+                parent.scrollTo({{
+                  top: Math.max(0, targetTop - parent.clientHeight * 0.35),
+                  behavior: 'auto',
+                }});
+              }}
+              parent = parent.parentElement;
+            }}
+
+            const absoluteTop = target.getBoundingClientRect().top + window.scrollY;
+            window.scrollTo({{
+              top: Math.max(0, absoluteTop - window.innerHeight * 0.65),
+              behavior: 'auto',
+            }});
           }};
 
-          const fitTargetIntoViewport = (texts, minScale) => {{
-            const target = revealElement(texts);
+          const fitTargetIntoViewport = (target, minScale) => {{
             if (!target) {{
               return false;
             }}
+
+            scrollIntoViewRobust(target);
 
             const viewportHeight = getViewportHeight();
             if (!viewportHeight) {{
@@ -293,15 +329,48 @@ def install_login_page_scale(page):
                 : 1;
 
             applyScale(requiredScale);
-            window.setTimeout(() => revealElement(texts), 40);
+            window.setTimeout(() => scrollIntoViewRobust(target), 40);
             return true;
+          }};
+
+          const findLoginSheetContainer = () => {{
+            let best = null;
+            let bestArea = Number.POSITIVE_INFINITY;
+
+            for (const node of document.querySelectorAll('div, section, article, aside, ul')) {{
+              const text = textOf(node);
+              if (!text.includes(studentLoginText) || !text.includes(unifiedLoginText)) {{
+                continue;
+              }}
+
+              const rect = node.getBoundingClientRect();
+              const area = rect.width * rect.height;
+              if (rect.height > 30 && area < bestArea) {{
+                best = node;
+                bestArea = area;
+              }}
+            }}
+
+            return best;
           }};
 
           const refreshScale = () => {{
             if (hasLoginSheet()) {{
-              fitTargetIntoViewport(['统一身份认证'], loginSheetMinScale);
+              const sheet = findLoginSheetContainer();
+              if (sheet) {{
+                sheet.style.maxHeight = '82vh';
+                sheet.style.overflowY = 'auto';
+                sheet.style.overscrollBehavior = 'contain';
+                sheet.style.paddingBottom = '16px';
+              }}
+
+              const unifiedLogin = findElementByTexts([unifiedLoginText]);
+              fitTargetIntoViewport(unifiedLogin, loginSheetMinScale);
             }} else if (hasLoginPage()) {{
-              fitTargetIntoViewport(['更多登录方式'], loginPageMinScale);
+              const moreLoginMethods =
+                findElementByTexts([moreLoginMethodsText]) ||
+                findElementByTexts([studentLoginText]);
+              fitTargetIntoViewport(moreLoginMethods, loginPageMinScale);
             }} else {{
               setNormalScale();
             }}
