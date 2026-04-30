@@ -25,8 +25,9 @@ MOBILE_VIEWPORT = {"width": 430, "height": 1180, "device_scale_factor": 2}
 OUTER_WINDOW_WIDTH = 470
 OUTER_WINDOW_HEIGHT = 1480
 PROFILE_DIR_NAME = ".browser_profile"
-LOGIN_PAGE_SCALE = 0.94
-LOGIN_SHEET_SCALE = 0.9
+LOGIN_PAGE_MIN_SCALE = 0.86
+LOGIN_SHEET_MIN_SCALE = 0.8
+LOGIN_VIEWPORT_MARGIN = 28
 
 
 def update_config_with_state(
@@ -202,8 +203,9 @@ def install_login_page_scale(page):
     page.add_init_script(
         script=f"""
         (() => {{
-          const pageScale = {LOGIN_PAGE_SCALE};
-          const sheetScale = {LOGIN_SHEET_SCALE};
+          const loginPageMinScale = {LOGIN_PAGE_MIN_SCALE};
+          const loginSheetMinScale = {LOGIN_SHEET_MIN_SCALE};
+          const viewportMargin = {LOGIN_VIEWPORT_MARGIN};
           const defaultViewport = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=yes, viewport-fit=cover';
 
           const ensureViewport = () =>
@@ -215,16 +217,7 @@ def install_login_page_scale(page):
               return tag;
             }})();
 
-          const setNormalScale = () => {{
-            const viewport = ensureViewport();
-            viewport.setAttribute('content', defaultViewport);
-            document.documentElement.style.zoom = '1';
-            if (document.body) {{
-              document.body.style.zoom = '1';
-            }}
-          }};
-
-          const setCompactScale = scale => {{
+          const applyScale = scale => {{
             const viewport = ensureViewport();
             viewport.setAttribute(
               'content',
@@ -234,6 +227,23 @@ def install_login_page_scale(page):
             if (document.body) {{
               document.body.style.zoom = String(scale);
             }}
+          }};
+
+          const setNormalScale = () => {{
+            ensureViewport().setAttribute('content', defaultViewport);
+            applyScale(1);
+          }};
+
+          const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+          const getViewportHeight = () => {{
+            const candidates = [
+              window.visualViewport ? window.visualViewport.height : 0,
+              window.innerHeight || 0,
+              document.documentElement ? document.documentElement.clientHeight : 0,
+              screen && screen.availHeight ? screen.availHeight : 0,
+            ].filter(value => Number.isFinite(value) && value > 0);
+            return candidates.length ? Math.min(...candidates) : 0;
           }};
 
           const findElementByTexts = texts => {{
@@ -259,17 +269,39 @@ def install_login_page_scale(page):
           const revealElement = texts => {{
             const target = findElementByTexts(texts);
             if (target && typeof target.scrollIntoView === 'function') {{
-              target.scrollIntoView({{ block: 'center', inline: 'nearest' }});
+              target.scrollIntoView({{ block: 'center', inline: 'nearest', behavior: 'auto' }});
             }}
+            return target;
+          }};
+
+          const fitTargetIntoViewport = (texts, minScale) => {{
+            const target = revealElement(texts);
+            if (!target) {{
+              return false;
+            }}
+
+            const viewportHeight = getViewportHeight();
+            if (!viewportHeight) {{
+              return false;
+            }}
+
+            const rect = target.getBoundingClientRect();
+            const bottomLimit = viewportHeight - viewportMargin;
+            const requiredScale =
+              rect.bottom > bottomLimit
+                ? clamp(bottomLimit / Math.max(rect.bottom, 1), minScale, 1)
+                : 1;
+
+            applyScale(requiredScale);
+            window.setTimeout(() => revealElement(texts), 40);
+            return true;
           }};
 
           const refreshScale = () => {{
             if (hasLoginSheet()) {{
-              setCompactScale(sheetScale);
-              revealElement(['统一身份认证']);
+              fitTargetIntoViewport(['统一身份认证'], loginSheetMinScale);
             }} else if (hasLoginPage()) {{
-              setCompactScale(pageScale);
-              revealElement(['更多登录方式']);
+              fitTargetIntoViewport(['更多登录方式'], loginPageMinScale);
             }} else {{
               setNormalScale();
             }}
