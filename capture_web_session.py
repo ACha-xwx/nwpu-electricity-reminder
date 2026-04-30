@@ -25,7 +25,8 @@ MOBILE_VIEWPORT = {"width": 430, "height": 1180, "device_scale_factor": 2}
 OUTER_WINDOW_WIDTH = 470
 OUTER_WINDOW_HEIGHT = 1480
 PROFILE_DIR_NAME = ".browser_profile"
-LOGIN_PAGE_SCALE = 0.9
+LOGIN_PAGE_SCALE = 0.94
+LOGIN_SHEET_SCALE = 0.9
 
 
 def update_config_with_state(
@@ -201,7 +202,8 @@ def install_login_page_scale(page):
     page.add_init_script(
         script=f"""
         (() => {{
-          const scale = {LOGIN_PAGE_SCALE};
+          const pageScale = {LOGIN_PAGE_SCALE};
+          const sheetScale = {LOGIN_SHEET_SCALE};
           const defaultViewport = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=yes, viewport-fit=cover';
 
           const ensureViewport = () =>
@@ -222,7 +224,7 @@ def install_login_page_scale(page):
             }}
           }};
 
-          const setCompactScale = () => {{
+          const setCompactScale = scale => {{
             const viewport = ensureViewport();
             viewport.setAttribute(
               'content',
@@ -234,14 +236,40 @@ def install_login_page_scale(page):
             }}
           }};
 
+          const findElementByTexts = texts => {{
+            const candidates = Array.from(
+              document.querySelectorAll('button, a, div, span, p, li')
+            );
+            return candidates.find(node => {{
+              const text = (node.innerText || node.textContent || '').trim();
+              return texts.every(part => text.includes(part));
+            }});
+          }};
+
           const hasLoginSheet = () => {{
             const text = document.body ? document.body.innerText : '';
             return text.includes('学号登录') && text.includes('统一身份认证');
           }};
 
+          const hasLoginPage = () => {{
+            const text = document.body ? document.body.innerText : '';
+            return text.includes('欢迎登录移动服务平台') && text.includes('请输入学号');
+          }};
+
+          const revealElement = texts => {{
+            const target = findElementByTexts(texts);
+            if (target && typeof target.scrollIntoView === 'function') {{
+              target.scrollIntoView({{ block: 'center', inline: 'nearest' }});
+            }}
+          }};
+
           const refreshScale = () => {{
             if (hasLoginSheet()) {{
-              setCompactScale();
+              setCompactScale(sheetScale);
+              revealElement(['统一身份认证']);
+            }} else if (hasLoginPage()) {{
+              setCompactScale(pageScale);
+              revealElement(['更多登录方式']);
             }} else {{
               setNormalScale();
             }}
