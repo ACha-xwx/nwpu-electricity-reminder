@@ -1,10 +1,8 @@
 # NWPU-electricity-reminder
 
-> A dorm electricity reminder tool for NWPU students, with web session capture, low-balance alerts, and optional Qmsg push.
+> 给西北工业大学学生用的宿舍电量查询和提醒工具。支持网页登录状态抓取、低电量提醒和可选 Qmsg 推送。
 
-给西工大学生用的宿舍电量提醒小工具。
-
-它主要做三件事：
+这个工具主要做三件事：
 
 - 查询宿舍当前剩余电量
 - 电量低于阈值时提醒
@@ -18,7 +16,7 @@
 2. 再运行 `check_electricity.py` 或 `check_electricity_linux.py` 查询余额
 3. 跑通后再去配 `Qmsg` 和定时任务
 
-浏览器路线一直不通的话，直接在 GitHub 上提 issue 就行。
+浏览器路线一直不通的话，在 GitHub 上提 issue 就行。
 
 ## 最短上手
 
@@ -57,7 +55,7 @@ python capture_web_session.py
 
 脚本会做这些事：
 
-1. 启动一个手机样式的 Chrome / Edge 窗口
+1. 启动一个 Chrome / Edge 窗口
 2. 进入移动服务平台首页
 3. 等你手动完成登录和进入电费页面
 4. 在页面会话信息出现后生成 `check_electricity.json`
@@ -67,13 +65,15 @@ python capture_web_session.py
 
 `C:\Users\你的用户名\AppData\Local\nwpu-electricity-reminder`
 
+`check_electricity.json` 里会保存网页登录状态，后面也可能写入 Qmsg Key。这个文件不要上传到 GitHub，也不要发给别人。仓库里的 `.gitignore` 已经默认忽略它。
+
 请按这个顺序手动操作：
 
 1. 点击页面上方的“请登录”按钮
-2. 在新页面底部点击“更多登录方式”
-3. 选择“统一身份认证”入口
-4. 登录你的西北工业大学账号
-5. 登录成功后，回到移动服务平台页面
+2. 在新页面底部点击“更多登录方式”，再选择“统一身份认证”
+3. 看不到底部入口时，直接点击页面右上角的蓝色“统一身份认证入口”按钮
+4. 进入统一身份认证后，脚本会自动切成电脑端窗口，请正常登录
+5. 遇到“安全验证”弹窗时，按页面提示完成短信或邮箱验证
 6. 点击“学生电费”或“宿舍电费 / 用量查询”
 7. 进入电费页面后，先不要关浏览器，等脚本继续抓取
 
@@ -114,7 +114,7 @@ python check_electricity_linux.py
 
 大多数同学只需要官方 `Qmsg` 私聊就够了。
 
-Qmsg 网页端的大致步骤：
+Qmsg 网页端步骤：
 
 1. 打开 [Qmsg 开始页](https://qmsg.zendee.cn/docs/start/) 或 [Qmsg 管理台](https://qmsg.zendee.cn/user)
 2. 选一个机器人
@@ -140,14 +140,14 @@ Qmsg 网页端的大致步骤：
 "report_every_check": true
 ```
 
-打开即可。
+打开就行。
 
 `mode` 常见有两种：
 
 - `private`：发给个人 QQ
 - `group`：发到群
 
-官方公共版更适合私聊。需要群消息的话，建议自己准备机器人或自建方案。
+官方公共版更适合私聊。要发群消息，需要自己准备机器人或自建方案。
 
 ## 常用文件
 
@@ -155,9 +155,10 @@ Qmsg 网页端的大致步骤：
 - `capture_web_session_windows.bat`：Windows 双击抓浏览器会话
 - `check_electricity.py`：Windows 查询与提醒
 - `check_electricity_linux.py`：Linux / 服务器查询
-- `check_electricit_linux.py`：旧文件名兼容入口
 - `run_check_windows.bat`：Windows 双击执行查询
 - `run_check_windows_silent.vbs`：Windows 静默执行查询
+- `retry_pending_notifications.py`：补发之前没发出去的 Qmsg 消息
+- `run_retry_pending.sh`：Linux / 服务器定时补发入口
 - `bind_room.py`：手动重选宿舍
 - `check_electricity.example.json`：示例配置
 
@@ -175,8 +176,11 @@ Qmsg 网页端的大致步骤：
 示例：
 
 ```cron
-0 8,20 * * * cd /path/to/npu_check_electricity && /usr/bin/python3 check_electricity_linux.py >> cron.log 2>&1
+0 8,20 * * * cd /path/to/nwpu-electricity-reminder && /usr/bin/python3 check_electricity_linux.py >> cron.log 2>&1
+*/5 * * * * cd /path/to/nwpu-electricity-reminder && /usr/bin/python3 retry_pending_notifications.py >> cron.log 2>&1
 ```
+
+第一行负责每天 8 点和 20 点查询电量。第二行负责补发之前因为 Qmsg 临时故障而没发出去的消息。
 
 想固定时间播报当前电量的话，记得把：
 
@@ -216,8 +220,7 @@ python capture_web_session.py
 - `check_electricity.json` 里的网页会话信息
 - 本地浏览器会话缓存
 
-然后再执行查询脚本。  
-还是不通的话，提 issue。
+然后再执行查询脚本。还是不通的话，提 issue。
 
 ### 3. 没有服务器还能用吗
 
@@ -235,7 +238,7 @@ python capture_web_session.py
 
 ## 最后提醒
 
-这个项目最关键的不是定时任务，也不是推送，而是**先抓到一份可用的登录状态。**
+先别急着配定时任务。最重要的是先抓到一份可用的登录状态。
 
 推荐顺序：
 

@@ -2,11 +2,13 @@ import asyncio
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import pymsgbox
 
 from browser_session import query_electricity_via_browser
+from pending_push import queue_pending_push
 from nwpu_api import (
     create_async_client,
     extract_remaining_electricity,
@@ -15,6 +17,10 @@ from nwpu_api import (
     load_config_or_empty,
     post_charge_request,
 )
+
+QMSG_RETRY_STATUS_CODES = {502, 503, 504}
+QMSG_RETRY_ATTEMPTS = 3
+QMSG_RETRY_DELAY_SECONDS = 3
 
 
 async def get_electric_left(auth, campus, building, room):
@@ -224,16 +230,39 @@ def send_qmsg(message, push_config):
     if push_config.get("qq"):
         data["qq"] = str(push_config["qq"])
 
-    response = httpx.post(
-        f"https://qmsg.zendee.cn/{endpoint}/{key}",
-        data=data,
-        timeout=15.0,
-        follow_redirects=True,
-    )
-    response.raise_for_status()
-    result = response.json()
-    if not result.get("success"):
-        raise RuntimeError(result.get("reason", "Qmsg 推送失败。"))
+    retry_attempts = int(push_config.get("retry_attempts", QMSG_RETRY_ATTEMPTS))
+    retry_delay_seconds = float(push_config.get("retry_delay_seconds", QMSG_RETRY_DELAY_SECONDS))
+
+    for attempt in range(1, retry_attempts + 1):
+        try:
+            response = httpx.post(
+                f"https://qmsg.zendee.cn/{endpoint}/{key}",
+                data=data,
+                timeout=15.0,
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+            result = response.json()
+            if not result.get("success"):
+                raise RuntimeError(result.get("reason", "Qmsg 推送失败。"))
+            return
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code not in QMSG_RETRY_STATUS_CODES or attempt >= retry_attempts:
+                raise
+            print(
+                f"Qmsg 服务暂时不可用（HTTP {status_code}），{retry_delay_seconds:.0f} 秒后重试 "
+                f"({attempt}/{retry_attempts})..."
+            )
+        except httpx.RequestError as exc:
+            if attempt >= retry_attempts:
+                raise
+            print(
+                f"Qmsg 网络请求失败：{exc}。{retry_delay_seconds:.0f} 秒后重试 "
+                f"({attempt}/{retry_attempts})..."
+            )
+
+        time.sleep(retry_delay_seconds)
 
 
 def send_qqbot_http(message, push_config):
@@ -272,7 +301,17 @@ def send_qqbot_http(message, push_config):
     response.raise_for_status()
 
 
-def send_notifications(message, config):
+def is_retryable_qmsg_error(error):
+    if isinstance(error, httpx.RequestError):
+        return True
+
+    if isinstance(error, httpx.HTTPStatusError) and error.response is not None:
+        return error.response.status_code in QMSG_RETRY_STATUS_CODES
+
+    return False
+
+
+def send_notifications(message, config, base_dir=None, source="manual_check"):
     push_targets = build_push_targets(config)
     if not push_targets:
         return
@@ -289,10 +328,21 @@ def send_notifications(message, config):
             print(f"推送成功，第 {index} 个渠道（{provider}）。")
         except Exception as exc:
             print(f"推送失败，第 {index} 个渠道（{provider}）：{exc}")
+            if provider == "qmsg" and base_dir is not None and is_retryable_qmsg_error(exc):
+                pending_path, created = queue_pending_push(
+                    base_dir=base_dir,
+                    message=message,
+                    push_config=push_config,
+                    source=source,
+                    error_message=str(exc),
+                )
+                status_text = "已写入" if created else "已更新"
+                print(f"Qmsg 失败补发队列{status_text}：{pending_path}")
 
 
 async def main():
     file_path = get_config_path()
+    base_dir = Path(file_path).parent
     config = load_config_or_empty(file_path)
     auth = config.get("auth")
     room_info_hint = config.get("room_display") or f"{config.get('campus', '-')} {config.get('building', '-')} {config.get('room', '-')}"
@@ -328,10 +378,20 @@ async def main():
                 f"当前剩余电量：{electric_left}\n宿舍信息：{room_info}\n请及时充值。",
                 "电量提醒",
             )
-            send_notifications(build_alert_message(electric_left, room_info, current_time), config)
+            send_notifications(
+                build_alert_message(electric_left, room_info, current_time),
+                config,
+                base_dir=base_dir,
+                source="low_balance_alert",
+            )
         elif should_report_every_check(config):
             print("电量充足，发送常规播报。")
-            send_notifications(build_status_message(electric_left, room_info, current_time), config)
+            send_notifications(
+                build_status_message(electric_left, room_info, current_time),
+                config,
+                base_dir=base_dir,
+                source="regular_report",
+            )
         else:
             print("电量充足。")
     except Exception as error:
@@ -343,7 +403,12 @@ async def main():
                 "登录状态可能已过期，请重新运行 capture_web_session.py 刷新登录状态。",
                 "登录状态提醒",
             )
-            send_notifications(message, config)
+            send_notifications(
+                message,
+                config,
+                base_dir=base_dir,
+                source="auth_expired_notice",
+            )
             return
         raise
 

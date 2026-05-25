@@ -5,6 +5,7 @@ dist
 __pycache__
 *.spec
 *.log
+pending_qmsg_notifications.json
 task_plan.md
 progress.md
 findings.md

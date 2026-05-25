@@ -19,15 +19,22 @@ MOBILE_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Mobile Safari/537.36"
 )
-# A taller mobile viewport keeps the "统一身份认证" option visible
-# on the login sheet without asking users to resize the window manually.
+DESKTOP_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
 MOBILE_VIEWPORT = {"width": 430, "height": 1180, "device_scale_factor": 2}
 OUTER_WINDOW_WIDTH = 470
 OUTER_WINDOW_HEIGHT = 1480
+DESKTOP_VIEWPORT = {"width": 1280, "height": 900, "device_scale_factor": 1}
+DESKTOP_WINDOW_WIDTH = 1280
+DESKTOP_WINDOW_HEIGHT = 900
 PROFILE_DIR_NAME = ".browser_profile"
-LOGIN_PAGE_MIN_SCALE = 0.86
-LOGIN_SHEET_MIN_SCALE = 0.8
-LOGIN_VIEWPORT_MARGIN = 28
+YKT_UNIFIED_LOGIN_URL = (
+    "https://yktapp.nwpu.edu.cn/berserker-auth/cas/login/wisedu"
+    "?targetUrl=https%3A%2F%2Fyktapp.nwpu.edu.cn%2Fplat%2FshouyeUser"
+)
 
 
 def update_config_with_state(
@@ -199,189 +206,107 @@ def emulate_mobile_browser(context, page):
     )
 
 
-def install_login_page_scale(page):
+def emulate_desktop_browser(context, page):
+    cdp_session = context.new_cdp_session(page)
+    cdp_session.send(
+        "Emulation.setDeviceMetricsOverride",
+        {
+            "width": DESKTOP_VIEWPORT["width"],
+            "height": DESKTOP_VIEWPORT["height"],
+            "deviceScaleFactor": DESKTOP_VIEWPORT["device_scale_factor"],
+            "mobile": False,
+            "screenOrientation": {"type": "landscapePrimary", "angle": 0},
+        },
+    )
+    cdp_session.send(
+        "Emulation.setUserAgentOverride",
+        {
+            "userAgent": DESKTOP_USER_AGENT,
+            "platform": "Windows",
+        },
+    )
+    cdp_session.send(
+        "Emulation.setTouchEmulationEnabled",
+        {
+            "enabled": False,
+        },
+    )
+
+
+def install_login_helper(page):
     page.add_init_script(
         script=f"""
         (() => {{
-          const loginPageMinScale = {LOGIN_PAGE_MIN_SCALE};
-          const loginSheetMinScale = {LOGIN_SHEET_MIN_SCALE};
-          const viewportMargin = {LOGIN_VIEWPORT_MARGIN};
+          const unifiedLoginUrl = {json.dumps(YKT_UNIFIED_LOGIN_URL, ensure_ascii=False)};
+          const helperId = 'nwpu-electricity-login-helper';
           const loginPageTitle = '\\u6b22\\u8fce\\u767b\\u5f55\\u79fb\\u52a8\\u670d\\u52a1\\u5e73\\u53f0';
-          const studentLoginText = '\\u5b66\\u53f7\\u767b\\u5f55';
           const unifiedLoginText = '\\u7edf\\u4e00\\u8eab\\u4efd\\u8ba4\\u8bc1';
           const moreLoginMethodsText = '\\u66f4\\u591a\\u767b\\u5f55\\u65b9\\u5f0f';
-          const defaultViewport = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=yes, viewport-fit=cover';
+          const studentLoginText = '\\u5b66\\u53f7\\u767b\\u5f55';
+          const accountPlaceholder = '\\u8bf7\\u8f93\\u5165\\u5b66\\u53f7';
+          const loginButtonText = '\\u767b\\u5f55';
 
-          const ensureViewport = () =>
-            document.querySelector('meta[name="viewport"]') ||
-            (() => {{
-              const tag = document.createElement('meta');
-              tag.name = 'viewport';
-              document.head.appendChild(tag);
-              return tag;
-            }})();
+          const pageText = () =>
+            (document.body?.innerText || document.body?.textContent || '').replace(/\\s+/g, ' ').trim();
 
-          const applyScale = scale => {{
-            const viewport = ensureViewport();
-            viewport.setAttribute(
-              'content',
-              `width=device-width, initial-scale=${{scale}}, maximum-scale=${{scale}}, user-scalable=yes, viewport-fit=cover`
-            );
-            document.documentElement.style.zoom = String(scale);
-            if (document.body) {{
-              document.body.style.zoom = String(scale);
+          const isLoginLikePage = () => {{
+            if (location.hostname !== 'yktapp.nwpu.edu.cn') {{
+              return false;
             }}
-          }};
 
-          const setNormalScale = () => {{
-            ensureViewport().setAttribute('content', defaultViewport);
-            applyScale(1);
-          }};
-
-          const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-          const textOf = node =>
-            (node?.innerText || node?.textContent || '').replace(/\\s+/g, ' ').trim();
-
-          const getViewportHeight = () => {{
-            const candidates = [
-              window.visualViewport ? window.visualViewport.height : 0,
-              window.innerHeight || 0,
-              document.documentElement ? document.documentElement.clientHeight : 0,
-              screen && screen.availHeight ? screen.availHeight : 0,
-            ].filter(value => Number.isFinite(value) && value > 0);
-            return candidates.length ? Math.min(...candidates) : 0;
-          }};
-
-          const findElementByTexts = texts => {{
-            const candidates = Array.from(
-              document.querySelectorAll('button, a, div, span, p, li, label')
+            const text = pageText();
+            return (
+              text.includes(moreLoginMethodsText) ||
+              text.includes(unifiedLoginText) ||
+              text.includes(studentLoginText) ||
+              (text.includes(loginPageTitle) && text.includes(loginButtonText)) ||
+              (text.includes(accountPlaceholder) && text.includes(loginButtonText))
             );
-            return candidates.find(node => {{
-              const text = textOf(node);
-              return texts.every(part => text.includes(part));
-            }});
           }};
 
-          const hasLoginSheet = () => {{
-            const text = textOf(document.body || document.documentElement);
-            return text.includes(studentLoginText) && text.includes(unifiedLoginText);
-          }};
-
-          const hasLoginPage = () => {{
-            const text = textOf(document.body || document.documentElement);
-            return text.includes(loginPageTitle) && text.includes(studentLoginText);
-          }};
-
-          const scrollIntoViewRobust = target => {{
-            if (!target) {{
+          const ensureHelper = () => {{
+            if (!document.body) {{
               return;
             }}
 
-            if (typeof target.scrollIntoView === 'function') {{
-              target.scrollIntoView({{ block: 'center', inline: 'nearest', behavior: 'auto' }});
+            let helper = document.getElementById(helperId);
+            if (!helper) {{
+              helper = document.createElement('button');
+              helper.id = helperId;
+              helper.type = 'button';
+              helper.textContent = '\\u7edf\\u4e00\\u8eab\\u4efd\\u8ba4\\u8bc1\\u5165\\u53e3';
+              helper.setAttribute('aria-label', '\\u6253\\u5f00\\u7edf\\u4e00\\u8eab\\u4efd\\u8ba4\\u8bc1\\u5165\\u53e3');
+              helper.style.cssText = [
+                'position:fixed',
+                'right:12px',
+                'top:12px',
+                'z-index:2147483647',
+                'border:0',
+                'border-radius:999px',
+                'padding:10px 14px',
+                'background:#1d4ed8',
+                'color:#fff',
+                'font-size:14px',
+                'font-weight:700',
+                'line-height:1',
+                'box-shadow:0 8px 24px rgba(29,78,216,.28)',
+                'cursor:pointer',
+              ].join(';');
+              helper.addEventListener('click', () => {{
+                window.location.href = unifiedLoginUrl;
+              }});
+              document.body.appendChild(helper);
             }}
 
-            let parent = target.parentElement;
-            while (parent) {{
-              const style = window.getComputedStyle(parent);
-              const scrollable =
-                parent.scrollHeight > parent.clientHeight + 12 &&
-                /(auto|scroll)/.test(style.overflowY);
-
-              if (scrollable) {{
-                const targetTop =
-                  target.getBoundingClientRect().top -
-                  parent.getBoundingClientRect().top +
-                  parent.scrollTop;
-                parent.scrollTo({{
-                  top: Math.max(0, targetTop - parent.clientHeight * 0.35),
-                  behavior: 'auto',
-                }});
-              }}
-              parent = parent.parentElement;
-            }}
-
-            const absoluteTop = target.getBoundingClientRect().top + window.scrollY;
-            window.scrollTo({{
-              top: Math.max(0, absoluteTop - window.innerHeight * 0.65),
-              behavior: 'auto',
-            }});
-          }};
-
-          const fitTargetIntoViewport = (target, minScale) => {{
-            if (!target) {{
-              return false;
-            }}
-
-            scrollIntoViewRobust(target);
-
-            const viewportHeight = getViewportHeight();
-            if (!viewportHeight) {{
-              return false;
-            }}
-
-            const rect = target.getBoundingClientRect();
-            const bottomLimit = viewportHeight - viewportMargin;
-            const requiredScale =
-              rect.bottom > bottomLimit
-                ? clamp(bottomLimit / Math.max(rect.bottom, 1), minScale, 1)
-                : 1;
-
-            applyScale(requiredScale);
-            window.setTimeout(() => scrollIntoViewRobust(target), 40);
-            return true;
-          }};
-
-          const findLoginSheetContainer = () => {{
-            let best = null;
-            let bestArea = Number.POSITIVE_INFINITY;
-
-            for (const node of document.querySelectorAll('div, section, article, aside, ul')) {{
-              const text = textOf(node);
-              if (!text.includes(studentLoginText) || !text.includes(unifiedLoginText)) {{
-                continue;
-              }}
-
-              const rect = node.getBoundingClientRect();
-              const area = rect.width * rect.height;
-              if (rect.height > 30 && area < bestArea) {{
-                best = node;
-                bestArea = area;
-              }}
-            }}
-
-            return best;
-          }};
-
-          const refreshScale = () => {{
-            if (hasLoginSheet()) {{
-              const sheet = findLoginSheetContainer();
-              if (sheet) {{
-                sheet.style.maxHeight = '82vh';
-                sheet.style.overflowY = 'auto';
-                sheet.style.overscrollBehavior = 'contain';
-                sheet.style.paddingBottom = '16px';
-              }}
-
-              const unifiedLogin = findElementByTexts([unifiedLoginText]);
-              fitTargetIntoViewport(unifiedLogin, loginSheetMinScale);
-            }} else if (hasLoginPage()) {{
-              const moreLoginMethods =
-                findElementByTexts([moreLoginMethodsText]) ||
-                findElementByTexts([studentLoginText]);
-              fitTargetIntoViewport(moreLoginMethods, loginPageMinScale);
-            }} else {{
-              setNormalScale();
-            }}
+            helper.style.display = isLoginLikePage() ? 'block' : 'none';
           }};
 
           const observer = new MutationObserver(() => {{
-            window.setTimeout(refreshScale, 30);
+            window.setTimeout(ensureHelper, 30);
           }});
 
           document.addEventListener('DOMContentLoaded', () => {{
-            refreshScale();
+            ensureHelper();
             observer.observe(document.documentElement, {{
               childList: true,
               subtree: true,
@@ -389,14 +314,14 @@ def install_login_page_scale(page):
             }});
           }});
 
-          window.addEventListener('load', refreshScale);
-          window.setInterval(refreshScale, 800);
+          window.addEventListener('load', ensureHelper);
+          window.setInterval(ensureHelper, 800);
         }})();
         """,
     )
 
 
-def resize_outer_window(page):
+def resize_outer_window(page, width=OUTER_WINDOW_WIDTH, height=OUTER_WINDOW_HEIGHT):
     cdp_session = page.context.new_cdp_session(page)
     try:
         window_info = cdp_session.send("Browser.getWindowForTarget")
@@ -409,8 +334,8 @@ def resize_outer_window(page):
                     "bounds": {
                         "left": 0,
                         "top": 0,
-                        "width": OUTER_WINDOW_WIDTH,
-                        "height": OUTER_WINDOW_HEIGHT,
+                        "width": width,
+                        "height": height,
                         "windowState": "normal",
                     },
                 },
@@ -419,11 +344,50 @@ def resize_outer_window(page):
         pass
 
 
-def wait_for_cas_login(context, timeout_seconds=300):
+def sync_browser_mode_for_url(context, page, last_mode=None):
+    url = page.url or ""
+    mode = "desktop" if "uis.nwpu.edu.cn" in url else "mobile"
+    if mode == last_mode:
+        return last_mode
+
+    if mode == "desktop":
+        emulate_desktop_browser(context, page)
+        resize_outer_window(page, DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT)
+        print("已切换到电脑端模式，请在统一身份认证页面完成登录。")
+    else:
+        emulate_mobile_browser(context, page)
+        resize_outer_window(page)
+        print("已切换回手机端模式，请继续进入电费页面。")
+
+    return mode
+
+
+def sync_browser_mode_for_url_and_reload(context, page, last_mode=None):
+    previous_url = page.url or ""
+    next_mode = sync_browser_mode_for_url(context, page, last_mode)
+    if next_mode == last_mode:
+        return last_mode
+
+    should_reload = (
+        last_mode is not None
+        and ("uis.nwpu.edu.cn" in previous_url or "yktapp.nwpu.edu.cn" in previous_url)
+    )
+    if should_reload:
+        try:
+            page.reload(wait_until="domcontentloaded", timeout=60000)
+        except Exception:
+            pass
+
+    return next_mode
+
+
+def wait_for_cas_login(context, page, timeout_seconds=300):
     print("正在等待统一身份认证登录完成。")
 
     start_time = time.time()
+    browser_mode = None
     while time.time() - start_time < timeout_seconds:
+        browser_mode = sync_browser_mode_for_url_and_reload(context, page, browser_mode)
         cookies = context.cookies()
         if any(cookie.get("name") == "TGC" for cookie in cookies):
             print("检测到统一身份认证登录成功。")
@@ -433,14 +397,16 @@ def wait_for_cas_login(context, timeout_seconds=300):
     raise TimeoutError("等待统一身份认证登录超时。请重新运行脚本后再试。")
 
 
-def wait_for_ykt_page(page, timeout_seconds=300):
+def wait_for_ykt_page(context, page, timeout_seconds=300):
     print("请在浏览器里手动进入“宿舍电费 / 用量查询”页面。")
     print("只有页面里真的写出了会话信息，脚本才会继续抓取。")
 
     start_time = time.time()
     last_url = ""
+    browser_mode = None
 
     while time.time() - start_time < timeout_seconds:
+        browser_mode = sync_browser_mode_for_url_and_reload(context, page, browser_mode)
         current_url = page.url
         if current_url != last_url:
             print(f"当前页面：{current_url}")
@@ -531,13 +497,13 @@ def query_current_room_from_page(page, scene):
 
 
 def print_manual_login_steps():
-    print("浏览器已经打开，当前窗口会尽量模拟成手机浏览器。")
+    print("浏览器已经打开。")
     print("请按下面的顺序手动操作：")
     print("1. 点击页面上方的“请登录”按钮。")
-    print("2. 在新页面底部点击“更多登录方式”。")
-    print("3. 选择“统一身份认证”入口。")
-    print("4. 登录你的西北工业大学账号。")
-    print("5. 登录成功后，回到移动服务平台页面。")
+    print("2. 在新页面底部点击“更多登录方式”，再选择“统一身份认证”。")
+    print("3. 如果看不到底部入口，直接点击页面右上角的蓝色“统一身份认证入口”按钮。")
+    print("4. 进入统一身份认证后，脚本会自动切换成电脑端窗口，请正常登录。")
+    print("5. 登录完成回到移动服务平台后，脚本会自动切回手机端。")
     print("6. 点击“学生电费”或“宿舍电费 / 用量查询”。")
     print("7. 进入电费页面后，先不要关浏览器，等脚本继续抓取。")
 
@@ -574,11 +540,11 @@ def main():
             page = get_or_create_page(context)
             resize_outer_window(page)
             emulate_mobile_browser(context, page)
-            install_login_page_scale(page)
+            install_login_helper(page)
             page.goto(YKT_HOME_URL, wait_until="domcontentloaded", timeout=60000)
             print_manual_login_steps()
-            wait_for_cas_login(context)
-            current_url, scene = wait_for_ykt_page(page)
+            wait_for_cas_login(context, page)
+            current_url, scene = wait_for_ykt_page(context, page)
 
             browser_state = read_browser_state(context, page)
             config_path = get_config_path()
